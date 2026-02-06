@@ -25,7 +25,9 @@ RUN mkdir -p /app/backend/node_modules/raknet-native/build/Release && \
 COPY . .
 
 # 5. Build the frontend
-RUN cd frontend && bun install && bun run build
+RUN cd frontend && \
+    bun install && \
+    VITE_API_URL=__VITE_API_URL__ VITE_WS_URL=__VITE_WS_URL__ bun run build
 
 # Stage 2: Runtime Stage
 FROM oven/bun:latest
@@ -47,4 +49,5 @@ ENV NODE_ENV=production
 EXPOSE 3001
 
 # 9. Start the server
+
 CMD ["bun", "run", "server.ts"]
