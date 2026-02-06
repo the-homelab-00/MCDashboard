@@ -23,8 +23,9 @@ RUN cd backend/node_modules/raknet-native && \
 
 # 3. FIX: Manually move the RakNet bindings to the folder the 'bindings' library expects
 # Your 'find' command showed the file at prebuilds/linux-5-x64/node-raknet.node
-RUN ls -l /app/backend/node_modules/raknet-native/build/Release/node-raknet.node
-
+RUN mkdir -p /app/backend/node_modules/raknet-native/prebuilds/linux-6-x64/ && \
+    cp /app/backend/node_modules/raknet-native/build/Release/node-raknet.node \
+       /app/backend/node_modules/raknet-native/prebuilds/linux-6-x64/node-raknet.node
 # 4. Copy the rest of the project
 COPY . .
 
