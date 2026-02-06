@@ -21,7 +21,8 @@ RUN cd backend/node_modules/raknet-native/raknet/Source && \
     # 2. Update the hard limit in MTUSize.h
     sed -i 's/#define MAXIMUM_MTU_SIZE 1492/#define MAXIMUM_MTU_SIZE 1200/g' MTUSize.h
 
-RUN cd backend/node_modules/raknet-native && \
+RUN cd /app/backend/node_modules/raknet-native && \
+    rm -rf build && \
     bun run install --build-from-source
 
 # 3. FIX: Manually move the RakNet bindings to the folder the 'bindings' library expects
