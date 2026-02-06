@@ -21,8 +21,8 @@ interface BotAccount {
   accountData: BotStats;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001/ws';
+const API_URL = (window as any)._ENV_?.VITE_API_URL || import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const WS_URL = (window as any)._ENV_?.VITE_WS_URL || import.meta.env.VITE_WS_URL || 'ws://localhost:3001/ws';
 
 // --- Sub-Component: Bot Card ---
 // Extracted to handle individual log scrolling logic

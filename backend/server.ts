@@ -25,10 +25,18 @@ const app = new Elysia()
     }))
     .get('/', async () => {
         let html = await Bun.file('../frontend/dist/index.html').text();
-        // Inject variables at runtime from K8s env
-        html = html.replace('__VITE_API_URL__', process.env.VITE_API_URL || '');
-        html = html.replace('__VITE_WS_URL__', process.env.VITE_WS_URL || '');
-        return new Response(html, { headers: { 'Content-Type': 'text/html' } });
+
+        const configScript = `
+<script>
+  window._ENV_ = {
+    VITE_API_URL: "${process.env.VITE_API_URL || ''}",
+    VITE_WS_URL: "${process.env.VITE_WS_URL || ''}"
+  };
+</script>`;
+
+        return new Response(html.replace('</head>', `${configScript}</head>`), {
+            headers: { 'Content-Type': 'text/html' }
+        });
     })
     .ws('/ws', {
         open(ws) {
