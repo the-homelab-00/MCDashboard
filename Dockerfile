@@ -49,4 +49,5 @@ ENV NODE_ENV=production
 EXPOSE 3001
 
 # 9. Start the server
+
 CMD ["bun", "run", "server.ts"]
