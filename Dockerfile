@@ -15,11 +15,15 @@ RUN apt-get update && apt-get install -y \
 COPY backend/package.json backend/bun.lock ./backend/
 RUN cd backend && bun install --frozen-lockfile
 
+RUN sed -i 's/MAXIMUM_MTU_SIZE, 1200, 576/1200, 1200, 576/g' \
+    /app/backend/node_modules/raknet-native/raknet/Source/RakPeer.cpp
+
+RUN cd backend/node_modules/raknet-native && \
+    bun run install --build-from-source
+
 # 3. FIX: Manually move the RakNet bindings to the folder the 'bindings' library expects
 # Your 'find' command showed the file at prebuilds/linux-5-x64/node-raknet.node
-RUN mkdir -p /app/backend/node_modules/raknet-native/build/Release && \
-    cp /app/backend/node_modules/raknet-native/prebuilds/linux-5-x64/node-raknet.node \
-       /app/backend/node_modules/raknet-native/build/Release/node-raknet.node
+RUN ls -l /app/backend/node_modules/raknet-native/build/Release/node-raknet.node
 
 # 4. Copy the rest of the project
 COPY . .
