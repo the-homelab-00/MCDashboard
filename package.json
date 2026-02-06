@@ -1,0 +1,11 @@
+{
+  "name": "mc-dash-monorepo",
+  "scripts": {
+    "dev:backend": "cd backend && bun run --watch server.ts",
+    "dev:frontend": "cd frontend && bun run dev",
+    "dev": "concurrently \"bun run dev:backend\" \"bun run dev:frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
