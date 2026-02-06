@@ -24,8 +24,10 @@ RUN mkdir -p /app/backend/node_modules/raknet-native/build/Release && \
 # 4. Copy the rest of the project
 COPY . .
 
-# 5. Build the frontend
-RUN cd frontend && bun install && bun run build
+# 5. Build the frontend with placeholders for runtime injection
+RUN cd frontend && \
+    bun install && \
+    VITE_API_URL=__VITE_API_URL__ VITE_WS_URL=__VITE_WS_URL__ bun run build
 
 # Stage 2: Runtime Stage
 FROM oven/bun:latest
