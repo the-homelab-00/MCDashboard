@@ -15,8 +15,11 @@ RUN apt-get update && apt-get install -y \
 COPY backend/package.json backend/bun.lock ./backend/
 RUN cd backend && bun install --frozen-lockfile
 
-RUN sed -i 's/MAXIMUM_MTU_SIZE, 1200, 576/1200, 1200, 576/g' \
-    /app/backend/node_modules/raknet-native/raknet/Source/RakPeer.cpp
+RUN cd backend/node_modules/raknet-native/raknet/Source && \
+    # 1. Update the negotiation array in RakPeer.cpp
+    sed -i 's/MAXIMUM_MTU_SIZE, 1200, 576/1200, 1200, 576/g' RakPeer.cpp && \
+    # 2. Update the hard limit in MTUSize.h
+    sed -i 's/#define MAXIMUM_MTU_SIZE 1492/#define MAXIMUM_MTU_SIZE 1200/g' MTUSize.h
 
 RUN cd backend/node_modules/raknet-native && \
     bun run install --build-from-source
