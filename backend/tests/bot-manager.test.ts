@@ -1,5 +1,6 @@
 import { expect, test, describe, beforeEach, spyOn } from "bun:test";
 import { BotManager } from "../src/bot-manager";
+import { existsSync, unlinkSync } from "fs";
 
 describe("BotManager", () => {
     let botManager: BotManager;
@@ -68,5 +69,33 @@ describe("BotManager", () => {
         // We don't actually call connectBot here because it hits the network/mineflayer
         // but we can verify default status
         expect(botManager.getAccounts()[0].status).toBe("offline");
+    });
+
+    test("should persist and resume 'should_be_online' state", async () => {
+        const dbPath = "test-state.db";
+        if (existsSync(dbPath)) unlinkSync(dbPath);
+
+        let bm = new BotManager(dbPath);
+        await bm.addAccount({ id: "state-id", username: "StateUser", type: "java" });
+
+        // Connect to set should_be_online = 1
+        // Note: connectBot calls connectJava which we should mock or just check DB
+        await bm.connectBot("state-id");
+
+        const accountsBefore = bm.getAccounts();
+        expect(accountsBefore[0].desiredStatus).toBe("online");
+
+        bm.close();
+
+        // Reload from the same DB
+        let bmReloaded = new BotManager(dbPath);
+        const accountsAfter = bmReloaded.getAccounts();
+
+        expect(accountsAfter.length).toBe(1);
+        expect(accountsAfter[0].id).toBe("state-id");
+        expect(accountsAfter[0].desiredStatus).toBe("online");
+
+        bmReloaded.close();
+        if (existsSync(dbPath)) unlinkSync(dbPath);
     });
 });

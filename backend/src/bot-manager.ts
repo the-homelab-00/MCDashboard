@@ -27,6 +27,7 @@ export interface BotAccount {
     username: string;
     type: BotType;
     status: 'online' | 'offline' | 'connecting' | 'error';
+    desiredStatus: 'online' | 'offline';
     logs: string[];
     accountData: BotStats;
 }
@@ -43,6 +44,13 @@ export class BotManager extends EventEmitter {
         this.db = new Database(dbPath, { create: true });
         this.initDb();
         this.loadAccounts();
+
+        // Auto-connect bots that should be online
+        for (const account of this.accounts.values()) {
+            if (account.desiredStatus === 'online') {
+                this.connectBot(account.id);
+            }
+        }
     }
 
     private initDb() {
@@ -50,19 +58,28 @@ export class BotManager extends EventEmitter {
             CREATE TABLE IF NOT EXISTS accounts (
                 id TEXT PRIMARY KEY,
                 username TEXT,
-                type TEXT
+                type TEXT,
+                should_be_online INTEGER DEFAULT 0
             )
         `).run();
+
+        // Migration: Add should_be_online if it doesn't exist
+        try {
+            this.db.query("ALTER TABLE accounts ADD COLUMN should_be_online INTEGER DEFAULT 0").run();
+        } catch (e) {
+            // Column already exists, ignore
+        }
     }
 
     private loadAccounts() {
-        const rows = this.db.query('SELECT * FROM accounts').all() as { id: string, username: string, type: string }[];
+        const rows = this.db.query('SELECT * FROM accounts').all() as { id: string, username: string, type: string, should_be_online: number }[];
         for (const row of rows) {
             this.accounts.set(row.id, {
                 id: row.id,
                 username: row.username,
                 type: row.type as BotType,
                 status: 'offline',
+                desiredStatus: row.should_be_online === 1 ? 'online' : 'offline',
                 logs: [],
                 accountData: { shards: 0, money: 0, kills: 0, deaths: 0 }
             });
@@ -70,12 +87,13 @@ export class BotManager extends EventEmitter {
     }
 
     async addAccount(account: { id: string, username: string, type: BotType }) {
-        this.db.query('INSERT INTO accounts (id, username, type) VALUES (?, ?, ?)')
+        this.db.query('INSERT INTO accounts (id, username, type, should_be_online) VALUES (?, ?, ?, 0)')
             .run(account.id, account.username, account.type);
 
         this.accounts.set(account.id, {
             ...account,
             status: 'offline',
+            desiredStatus: 'offline',
             logs: [],
             accountData: { shards: 0, money: 0, kills: 0, deaths: 0 }
         });
@@ -107,6 +125,9 @@ export class BotManager extends EventEmitter {
         if (!account || account.status === 'online') return;
 
         account.status = 'connecting';
+        account.desiredStatus = 'online';
+        this.db.query('UPDATE accounts SET should_be_online = 1 WHERE id = ?').run(id);
+
         this.emit('update', this.getAccounts());
         this.log(id, `Connecting to ${process.env.SERVER_IP} (${account.type})...`);
 
@@ -264,8 +285,20 @@ export class BotManager extends EventEmitter {
             bot.on('end', (reason) => {
                 this.log(id, `Bot disconnected. Reason: ${reason || 'Socket closed'}`);
                 const account = this.accounts.get(id);
-                if (account) account.status = 'offline';
-                this.emit('update', this.getAccounts());
+                if (account) {
+                    account.status = 'offline';
+                    this.emit('update', this.getAccounts());
+
+                    // Reconnect if desired
+                    if (account.desiredStatus === 'online') {
+                        this.log(id, 'Attempting to reconnect in 5 seconds...');
+                        setTimeout(() => {
+                            if (account.desiredStatus === 'online') {
+                                this.connectBot(id);
+                            }
+                        }, 5000);
+                    }
+                }
             });
 
             this.bots.set(id, bot);
@@ -312,10 +345,11 @@ export class BotManager extends EventEmitter {
     private connectBedrock(id: string, username: string) {
         try {
             const client = createClient({
-                host: process.env.SERVER_IP,
+                host: process.env.SERVER_IP || "51.195.32.101",
                 port: 19132,
                 username: username,
                 offline: false,
+                mtu: 1200,
                 profilesFolder: path.join(DATA_ROOT, 'sessions/bedrock', username),
                 onMsaCode: (data) => {
                     const directLink = `https://www.microsoft.com/link?otc=${data.user_code}`
@@ -376,8 +410,20 @@ export class BotManager extends EventEmitter {
             client.on('close', () => {
                 this.log(id, 'Bedrock connection closed.');
                 const account = this.accounts.get(id);
-                if (account) account.status = 'offline';
-                this.emit('update', this.getAccounts());
+                if (account) {
+                    account.status = 'offline';
+                    this.emit('update', this.getAccounts());
+
+                    // Reconnect if desired
+                    if (account.desiredStatus === 'online') {
+                        this.log(id, 'Attempting to reconnect in 5 seconds...');
+                        setTimeout(() => {
+                            if (account.desiredStatus === 'online') {
+                                this.connectBot(id);
+                            }
+                        }, 5000);
+                    }
+                }
             });
 
             this.bots.set(id, client);
@@ -388,17 +434,25 @@ export class BotManager extends EventEmitter {
 
     async disconnectBot(id: string) {
         const bot = this.bots.get(id);
+        const account = this.accounts.get(id);
+
+        if (account) {
+            account.desiredStatus = 'offline';
+            this.db.query('UPDATE accounts SET should_be_online = 0 WHERE id = ?').run(id);
+        }
+
         if (bot) {
             // Log user-initiated disconnect
             this.log(id, '🔌 Disconnecting manually...');
 
-            if (this.accounts.get(id)?.type === 'java') {
+            if (account?.type === 'java') {
                 bot.quit();
             } else {
                 bot.close();
             }
             this.bots.delete(id);
         }
+        this.emit('update', this.getAccounts());
     }
 
     close() {

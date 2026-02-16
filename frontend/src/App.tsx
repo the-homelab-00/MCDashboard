@@ -24,6 +24,10 @@ interface BotAccount {
 const API_URL = (window as any)._ENV_?.VITE_API_URL || import.meta.env.VITE_API_URL || 'http://localhost:3001';
 const WS_URL = (window as any)._ENV_?.VITE_WS_URL || import.meta.env.VITE_WS_URL || 'ws://localhost:3001/ws';
 
+console.log("API", import.meta.env.VITE_API_URL)
+
+console.log("WS_URL", WS_URL)
+
 // --- Sub-Component: Bot Card ---
 // Extracted to handle individual log scrolling logic
 interface BotCardProps {
