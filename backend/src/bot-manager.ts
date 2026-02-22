@@ -373,8 +373,11 @@ export class BotManager extends EventEmitter {
                     bot.chat("/warp crates");
                 }, 2000);
                 setTimeout(() => {
-                    findStaticEntities();
+                    findStaticEntities(this);
                 }, 4000);
+                setTimeout(() => {
+                    bot.chat("/afk");
+                }, 6000);
             });
 
             bot.on("message", (username, message) => {
