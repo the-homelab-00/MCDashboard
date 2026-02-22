@@ -1,7 +1,14 @@
-import React, { useState, useEffect, useRef, type SubmitEvent } from 'react';
-import { Plus, Activity, LogOut, Terminal, Layers, Trash2, RotateCcw } from 'lucide-react';
-import './index.css';
-
+import React, { type SubmitEvent, useEffect, useRef, useState } from "react";
+import {
+  Activity,
+  Layers,
+  LogOut,
+  Plus,
+  RotateCcw,
+  Terminal,
+  Trash2,
+} from "lucide-react";
+import "./index.css";
 
 // --- Types ---
 
@@ -15,18 +22,21 @@ export interface BotStats {
 interface BotAccount {
   id: string;
   username: string;
-  type: 'java' | 'bedrock';
-  status: 'online' | 'offline' | 'connecting' | 'error';
+  type: "java" | "bedrock";
+  desiredStatus: "online";
+  status: "online" | "offline" | "connecting" | "error";
   logs: string[];
   accountData: BotStats;
 }
 
-const API_URL = (window as any)._ENV_?.VITE_API_URL || import.meta.env.VITE_API_URL || 'http://localhost:3001';
-const WS_URL = (window as any)._ENV_?.VITE_WS_URL || import.meta.env.VITE_WS_URL || 'ws://localhost:3001/ws';
+const API_URL = (window as any)._ENV_?.VITE_API_URL ||
+  import.meta.env.VITE_API_URL || "http://localhost:3001";
+const WS_URL = (window as any)._ENV_?.VITE_WS_URL ||
+  import.meta.env.VITE_WS_URL || "ws://localhost:3001/ws";
 
-console.log("API", import.meta.env.VITE_API_URL)
+console.log("API", import.meta.env.VITE_API_URL);
 
-console.log("WS_URL", WS_URL)
+console.log("WS_URL", WS_URL);
 
 // --- Sub-Component: Bot Card ---
 // Extracted to handle individual log scrolling logic
@@ -38,32 +48,60 @@ interface BotCardProps {
 
 const BotCard: React.FC<BotCardProps> = ({ acc, onToggle, onRemove }) => {
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const logContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = logContainerRef.current;
+    if (container) {
+      // Only scroll to bottom if the user is already near the bottom (within 50px)
+      const isAtBottom =
+        container.scrollHeight - container.scrollTop <=
+          container.clientHeight + 50;
+
+      if (isAtBottom) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
   }, [acc.logs]);
+
+  console.log("hi")
 
   return (
     <div className="bot-card glass fade-in">
       {/* HEADER SECTION */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: 16,
+        }}
+      >
         {/* Left Side: Text Info (with truncation fix) */}
         <div style={{ minWidth: 0, marginRight: 12 }}>
           <h3
             style={{
-              fontSize: '1.2rem',
+              fontSize: "1.2rem",
               marginBottom: 4,
-              whiteSpace: 'nowrap',       // Prevent wrapping
-              overflow: 'hidden',         // Hide overflow
-              textOverflow: 'ellipsis'    // Add "..." at the end
+              whiteSpace: "nowrap", // Prevent wrapping
+              overflow: "hidden", // Hide overflow
+              textOverflow: "ellipsis", // Add "..." at the end
             }}
             title={acc.username} // Shows full name on hover
           >
             {acc.username}
           </h3>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }}>
-            {acc.type === 'java' ? <Layers size={12} style={{ marginRight: 4 }} /> : <Activity size={12} style={{ marginRight: 4 }} />}
+          <span
+            style={{
+              fontSize: "0.75rem",
+              color: "var(--text-secondary)",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            {acc.type === "java"
+              ? <Layers size={12} style={{ marginRight: 4 }} />
+              : <Activity size={12} style={{ marginRight: 4 }} />}
             {acc.type.toUpperCase()} EDITION
           </span>
         </div>
@@ -78,64 +116,112 @@ const BotCard: React.FC<BotCardProps> = ({ acc, onToggle, onRemove }) => {
       </div>
 
       {/* STATS SECTION */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '8px',
-        marginBottom: '16px'
-      }}>
-        <div style={{
-          background: 'rgba(255,215,0,0.1)',
-          padding: '8px',
-          borderRadius: '6px',
-          border: '1px solid rgba(255,215,0,0.2)'
-        }}>
-          <div style={{ fontSize: '0.7rem', color: 'rgba(255,215,0,0.8)', textTransform: 'uppercase', fontWeight: 'bold' }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "8px",
+          marginBottom: "16px",
+        }}
+      >
+        <div
+          style={{
+            background: "rgba(255,215,0,0.1)",
+            padding: "8px",
+            borderRadius: "6px",
+            border: "1px solid rgba(255,215,0,0.2)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "0.7rem",
+              color: "rgba(255,215,0,0.8)",
+              textTransform: "uppercase",
+              fontWeight: "bold",
+            }}
+          >
             Shards
           </div>
-          <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#ffd700' }}>
+          <div
+            style={{ fontSize: "1.1rem", fontWeight: "bold", color: "#ffd700" }}
+          >
             {acc.accountData?.shards?.toLocaleString() || 0}
           </div>
         </div>
 
         {/* Optional: Add Money display if you are scraping it too */}
-        <div style={{
-          background: 'rgba(76,175,80,0.1)',
-          padding: '8px',
-          borderRadius: '6px',
-          border: '1px solid rgba(76,175,80,0.2)'
-        }}>
-          <div style={{ fontSize: '0.7rem', color: 'rgba(76,175,80,0.8)', textTransform: 'uppercase', fontWeight: 'bold' }}>
+        <div
+          style={{
+            background: "rgba(76,175,80,0.1)",
+            padding: "8px",
+            borderRadius: "6px",
+            border: "1px solid rgba(76,175,80,0.2)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "0.7rem",
+              color: "rgba(76,175,80,0.8)",
+              textTransform: "uppercase",
+              fontWeight: "bold",
+            }}
+          >
             Money
           </div>
-          <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#4caf50' }}>
+          <div
+            style={{ fontSize: "1.1rem", fontWeight: "bold", color: "#4caf50" }}
+          >
             ${acc.accountData?.money?.toLocaleString() || 0}
           </div>
         </div>
       </div>
 
       {/* LOG VIEWER */}
-      <div className="log-viewer" style={{ height: '150px', overflowY: 'auto', background: 'rgba(0,0,0,0.2)', padding: '8px', borderRadius: '4px' }}>
+      <div
+        className="log-viewer"
+        ref={logContainerRef}
+        style={{
+          height: "150px",
+          overflowY: "auto",
+          background: "rgba(0,0,0,0.2)",
+          padding: "8px",
+          borderRadius: "4px",
+        }}
+      >
         {acc.logs.map((log, i) => (
-          <div key={i} style={{ marginBottom: 4, fontSize: '0.85rem', fontFamily: 'monospace' }}>{log}</div>
+          <div
+            key={i}
+            style={{
+              marginBottom: 4,
+              fontSize: "0.85rem",
+              fontFamily: "monospace",
+            }}
+          >
+            {log}
+          </div>
         ))}
-        {acc.logs.length === 0 && <span style={{ opacity: 0.3, fontSize: '0.85rem' }}>No logs yet...</span>}
-        <div ref={logsEndRef} />
+        {acc.logs.length === 0 && (
+          <span style={{ opacity: 0.3, fontSize: "0.85rem" }}>
+            No logs yet...
+          </span>
+        )}
+        {/* <div ref={logsEndRef} /> */}
       </div>
-
+      
       {/* FOOTER BUTTONS */}
-      <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
+      <div style={{ marginTop: 20, display: "flex", gap: 12 }}>
         <button
           className="btn btn-primary"
           style={{ flex: 1 }}
-          onClick={() => onToggle(acc.id, acc.status)}
-          disabled={acc.status === 'connecting'}
+          onClick={() => onToggle(acc.id, acc.desiredStatus)}
         >
-          {acc.status === 'online' ? (
-            <><LogOut size={16} style={{ marginRight: 6 }} /> Stop</>
-          ) : (
-            <>{acc.status === 'connecting' ? <RotateCcw className="spin" size={16} /> : 'Start AFK'}</>
-          )}
+          {acc.desiredStatus === "online"
+            ? (
+              <>
+                <LogOut size={16} style={{ marginRight: 6 }} /> Stop
+              </>
+            )
+            : <>{"Start AFK"}</>}
         </button>
         <button
           className="btn btn-secondary"
@@ -160,8 +246,8 @@ function App() {
 
   // Modal State
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newUsername, setNewUsername] = useState('');
-  const [newType, setNewType] = useState<'java' | 'bedrock'>('java');
+  const [newUsername, setNewUsername] = useState("");
+  const [newType, setNewType] = useState<"java" | "bedrock">("java");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
@@ -171,32 +257,34 @@ function App() {
     let reconnectTimeout: ReturnType<typeof setTimeout>;
 
     const connect = () => {
-      if (socketRef.current?.readyState === WebSocket.OPEN ||
-        socketRef.current?.readyState === WebSocket.CONNECTING) {
+      if (
+        socketRef.current?.readyState === WebSocket.OPEN ||
+        socketRef.current?.readyState === WebSocket.CONNECTING
+      ) {
         return;
       }
-      console.log('🔌 Connecting to WebSocket...');
+      console.log("🔌 Connecting to WebSocket...");
       const socket = new WebSocket(WS_URL);
       socketRef.current = socket;
 
       socket.onopen = () => {
-        console.log('✅ Connected to Backend WebSocket');
+        console.log("✅ Connected to Backend WebSocket");
         setIsConnected(true);
       };
 
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.type === 'init' || data.type === 'update') {
+          if (data.type === "init" || data.type === "update") {
             setAccounts(data.accounts);
           }
         } catch (err) {
-          console.error('❌ Failed to parse WS message:', err);
+          console.error("❌ Failed to parse WS message:", err);
         }
       };
 
       socket.onclose = () => {
-        console.log('⚠️ WebSocket disconnected. Reconnecting in 3s...');
+        console.log("⚠️ WebSocket disconnected. Reconnecting in 3s...");
         setIsConnected(false);
         setWs(null);
         socketRef.current = null;
@@ -205,7 +293,7 @@ function App() {
       };
 
       socket.onerror = (err) => {
-        console.error('❌ WebSocket Error:', err);
+        console.error("❌ WebSocket Error:", err);
         socket?.close();
       };
 
@@ -231,17 +319,17 @@ function App() {
     setIsSubmitting(true);
     try {
       const res = await fetch(`${API_URL}/accounts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: newUsername, type: newType })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: newUsername, type: newType }),
       });
 
-      if (!res.ok) throw new Error('Failed to add account');
+      if (!res.ok) throw new Error("Failed to add account");
 
       setShowAddModal(false);
-      setNewUsername('');
+      setNewUsername("");
     } catch (error) {
-      alert('Error creating account. Ensure backend is running.');
+      alert("Error creating account. Ensure backend is running.");
       console.error(error);
     } finally {
       setIsSubmitting(false);
@@ -249,26 +337,28 @@ function App() {
   };
 
   const removeAccount = async (id: string) => {
-    if (!confirm('Are you sure you want to remove this account?')) return;
+    if (!confirm("Are you sure you want to remove this account?")) return;
 
     try {
-      await fetch(`${API_URL}/accounts/${id}`, { method: 'DELETE' });
+      await fetch(`${API_URL}/accounts/${id}`, { method: "DELETE" });
     } catch (error) {
-      console.error('Failed to delete account:', error);
-      alert('Failed to delete account.');
+      console.error("Failed to delete account:", error);
+      alert("Failed to delete account.");
     }
   };
 
   const toggleBot = (id: string, status: string) => {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
-      alert('WebSocket is not connected');
+      alert("WebSocket is not connected");
       return;
     }
 
-    if (status === 'offline' || status === 'error') {
-      ws.send(JSON.stringify({ type: 'connect', id }));
+    console.log(id, status)
+
+    if (status === "offline" || status === "error") {
+      ws.send(JSON.stringify({ type: "connect", id }));
     } else {
-      ws.send(JSON.stringify({ type: 'disconnect', id }));
+      ws.send(JSON.stringify({ type: "disconnect", id }));
     }
   };
 
@@ -277,9 +367,16 @@ function App() {
       <header>
         <div className="logo">
           MC<span>DASH</span>
-          {!isConnected && <span style={{ fontSize: 12, color: 'orange', marginLeft: 10 }}>(Reconnecting...)</span>}
+          {!isConnected && (
+            <span style={{ fontSize: 12, color: "orange", marginLeft: 10 }}>
+              (Reconnecting...)
+            </span>
+          )}
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+        <button
+          className="btn btn-primary"
+          onClick={() => setShowAddModal(true)}
+        >
           <Plus size={18} style={{ marginRight: 8 }} /> Add Account
         </button>
       </header>
@@ -295,47 +392,107 @@ function App() {
         ))}
 
         {accounts.length === 0 && isConnected && (
-          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 40, opacity: 0.5 }}>
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              textAlign: "center",
+              padding: 40,
+              opacity: 0.5,
+            }}
+          >
             <p>No bots configured. Add one to get started.</p>
           </div>
         )}
       </div>
 
       {showAddModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.8)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+          }}
+        >
           <div className="glass" style={{ width: 400, padding: 32 }}>
             <h2 style={{ marginBottom: 24 }}>Add New Account</h2>
 
             <form onSubmit={addAccount}>
               <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', marginBottom: 8, fontSize: '0.9rem' }}>Minecraft Username</label>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: 8,
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Minecraft Username
+                </label>
                 <input
                   type="text"
                   className="glass"
                   autoFocus
-                  style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid var(--glass-border)' }}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    background: "rgba(255,255,255,0.05)",
+                    color: "white",
+                    border: "1px solid var(--glass-border)",
+                  }}
                   value={newUsername}
                   onChange={(e) => setNewUsername(e.target.value)}
                   placeholder="Steve"
                 />
               </div>
               <div style={{ marginBottom: 24 }}>
-                <label style={{ display: 'block', marginBottom: 8, fontSize: '0.9rem' }}>Version</label>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: 8,
+                    fontSize: "0.9rem",
+                  }}
+                >
+                  Version
+                </label>
                 <select
                   className="glass"
-                  style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid var(--glass-border)' }}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    background: "rgba(255,255,255,0.05)",
+                    color: "white",
+                    border: "1px solid var(--glass-border)",
+                  }}
                   value={newType}
-                  onChange={(e) => setNewType(e.target.value as 'java' | 'bedrock')}
+                  onChange={(e) =>
+                    setNewType(e.target.value as "java" | "bedrock")}
                 >
                   <option value="java">Java Edition</option>
                   <option value="bedrock">Bedrock Edition</option>
                 </select>
               </div>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={isSubmitting}>
-                  {isSubmitting ? 'Adding...' : 'Add Account'}
+              <div style={{ display: "flex", gap: 12 }}>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  style={{ flex: 1 }}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? "Adding..." : "Add Account"}
                 </button>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowAddModal(false)}
+                >
+                  Cancel
+                </button>
               </div>
             </form>
           </div>
