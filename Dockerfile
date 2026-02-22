@@ -6,7 +6,7 @@ WORKDIR /app
 
 # 2. Copy backend lockfiles and install
 COPY backend/package.json backend/bun.lock ./backend/
-RUN cd backend && bun install --frozen-lockfile
+RUN cd backend && bun install
 
 
 # 5. Build the frontend with placeholders for runtime injection
