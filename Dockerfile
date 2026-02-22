@@ -8,6 +8,8 @@ WORKDIR /app
 COPY backend/package.json backend/bun.lock ./backend/
 RUN cd backend && bun install
 
+# 4. Copy the rest of the project
+COPY . .
 
 # 5. Build the frontend with placeholders for runtime injection
 RUN cd frontend && \
