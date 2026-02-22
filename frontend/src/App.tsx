@@ -4,7 +4,6 @@ import {
   Layers,
   LogOut,
   Plus,
-  RotateCcw,
   Terminal,
   Trash2,
 } from "lucide-react";
@@ -47,7 +46,7 @@ interface BotCardProps {
 }
 
 const BotCard: React.FC<BotCardProps> = ({ acc, onToggle, onRemove }) => {
-  const logsEndRef = useRef<HTMLDivElement>(null);
+
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
