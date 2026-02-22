@@ -418,12 +418,15 @@ export class BotManager extends EventEmitter {
 
                     // Reconnect if desired
                     if (account.desiredStatus === "online") {
-                        this.log(id, "Attempting to reconnect in 5 seconds...");
+                        this.log(
+                            id,
+                            "Attempting to reconnect in 15 seconds...",
+                        );
                         setTimeout(() => {
                             if (account.desiredStatus === "online") {
                                 this.connectBot(id);
                             }
-                        }, 5000);
+                        }, 15000);
                     }
                 }
             });
