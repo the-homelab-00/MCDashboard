@@ -192,41 +192,35 @@ export class BotManager extends EventEmitter {
         }
     }
 
-    async connectBot(id: string) {
-       if (this.bots.has(id)) {
-        this.log(id, "⚠️ Found zombie bot instance. Cleaning up before connecting...");
-        try {
-            const oldBot = this.bots.get(id);
-            oldBot.removeAllListeners(); // Now it's safe to nuke listeners
-            oldBot.end(); // Force kill
-        } catch (e) {
-            console.error("Error killing zombie bot:", e);
-        }
-        this.bots.delete(id);
-        }
+    async connectBot(id: string, force: boolean = false) {
         const account = this.accounts.get(id);
-        if (
-            !account ||
-            account.status === "online" ||
-            account.status === "connecting" ||
-            this.bots.has(id)
-        ) {
-            return;
+        if (!account) return;
+
+        // If it's already online and we aren't forcing, stop.
+        if (!force && account.status === "online") return;
+
+        // If it's already connecting, only allow it if we are forcing it (user clicked button)
+        if (!force && account.status === "connecting") return;
+
+        // CLEANUP: If a bot instance exists, kill it properly before starting a new one
+        if (this.bots.has(id)) {
+            this.log(id, "🧹 Cleaning up existing instance...");
+            const oldBot = this.bots.get(id);
+            try {
+                oldBot.removeAllListeners();
+                oldBot.quit(); // Use quit() for Java
+            } catch (e) {}
+            this.bots.delete(id);
         }
+
         account.status = "connecting";
         account.desiredStatus = "online";
         this.db.query("UPDATE accounts SET should_be_online = 1 WHERE id = ?")
             .run(id);
-
         this.triggerUpdate();
-        this.log(
-            id,
-            `Connecting to ${process.env.SERVER_IP} (${account.type})...`,
-        );
 
-        if (account.type === "java") {
-            this.connectJava(id, account.username);
-        }
+        this.log(id, `Connecting to ${process.env.SERVER_IP} (java)...`);
+        this.connectJava(id, account.username);
     }
 
     private connectJava(id: string, username: string) {
@@ -249,7 +243,29 @@ export class BotManager extends EventEmitter {
                     console.log(`Login Link: ${directLink}`);
                 },
             });
+            this.bots.set(id, bot);
             bot.physicsEnabled = false;
+
+            const loginTimeout = setTimeout(() => {
+                const acc = this.accounts.get(id);
+                if (acc && acc.status === "connecting") {
+                    this.log(
+                        id,
+                        "⚠️ Login timed out (Microsoft Auth hang). Retrying...",
+                    );
+                    this.connectBot(id, true); // Force a retry
+                }
+            }, 120000);
+
+            bot.once("login", () => {
+                clearTimeout(loginTimeout); // Cancel the safety timeout
+                const account = this.accounts.get(id);
+                if (account) {
+                    account.status = "online";
+                    this.log(id, "Logged in successfully!");
+                    this.triggerUpdate();
+                }
+            });
 
             bot.on("forcedMove", () => {
                 // 1. Give the bot a tiny delay to settle into the new location
@@ -486,7 +502,14 @@ export class BotManager extends EventEmitter {
             });
 
             bot.on("error", (err) => {
-                this.log(id, `Error: ${err.message}`);
+                if (err.message.includes("429")) {
+                    this.log(
+                        id,
+                        "🛑 Microsoft Rate Limit (429). Wait 15+ minutes.",
+                    );
+                } else {
+                    this.log(id, `Error: ${err.message}`);
+                }
                 const account = this.accounts.get(id);
                 if (account) account.status = "error";
                 this.triggerUpdate();
@@ -494,28 +517,28 @@ export class BotManager extends EventEmitter {
 
             // --- UPDATED: End Event with Reason ---
             bot.on("end", (reason) => {
-                this.log(
-                    id,
-                    `Bot disconnected. Reason: ${reason || "Socket closed"}`,
-                );
-                const account = this.accounts.get(id);
+                clearTimeout(loginTimeout);
+                this.log(id, `Disconnected: ${reason}`);
 
-                // FIX: Wipe the bot from memory and clear its listeners so it gets garbage collected
-                this.bots.delete(id);
-                //bot.removeAllListeners();
+                const account = this.accounts.get(id);
+                this.bots.delete(id); // Important: remove from map so we can reconnect
 
                 if (account) {
                     account.status = "offline";
                     this.triggerUpdate();
 
-                    // Reconnect if desired
+                    // Auto-reconnect logic
                     if (account.desiredStatus === "online") {
                         this.log(
                             id,
                             "Attempting to reconnect in 15 seconds...",
                         );
                         setTimeout(() => {
-                            if (account.desiredStatus === "online") {
+                            // Check again if desiredStatus is still online before reconnecting
+                            if (
+                                this.accounts.get(id)?.desiredStatus ===
+                                    "online"
+                            ) {
                                 this.connectBot(id);
                             }
                         }, 15000);
@@ -623,6 +646,3 @@ process.on("unhandledRejection", (err: any) => {
         err?.message || err,
     );
 });
-
-
-
