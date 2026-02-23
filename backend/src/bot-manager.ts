@@ -320,40 +320,45 @@ export class BotManager extends EventEmitter {
             });
 
             function filterKeyEntities(this: BotManager, entity) {
-                if (entity?.name !== "armor_stand") return;
-                const rawName = entity.getCustomName();
-                if (!rawName) return;
+                try {
+                    if (entity?.name !== "armor_stand") return;
+                    const rawName = entity.getCustomName();
+                    if (!rawName) return;
 
-                const text = rawName.json.text;
-                if (text.includes("Players")) return;
+                    const text = rawName.json.text;
+                    if (text.includes("Players")) return;
 
-                const extra = rawName.extra;
-                if (!extra) return;
+                    const extra = rawName.extra;
+                    if (!extra) return;
 
-                const hasKeys = extra.find((message) => {
-                    const text = decancer(message.text).toString();
-                    if (text === "keys") return true;
-                });
+                    const hasKeys = extra.find((message) => {
+                        const text = decancer(message.text).toString();
+                        if (text === "keys") return true;
+                    });
 
-                if (!hasKeys) return;
+                    if (!hasKeys) return;
 
-                const keysText = extra[0];
-                const amount = extra[1];
-                if (!keysText || !amount) return;
+                    const keysText = extra[0];
+                    const amount = extra[1];
+                    if (!keysText || !amount) return;
 
-                const keyColor = keysText.color as never as string;
-                const keyType = KEY_MAP[keyColor] as Crates | undefined;
+                    const keyColor = keysText.color as never as string;
+                    const keyType = KEY_MAP[keyColor] as Crates | undefined;
 
-                if (typeof keyType === "number" && typeof amount === "string") {
-                    const amountParsed = Number(amount.trim());
-                    if (typeof amountParsed === "number") {
-                        this.log(id, `${Crates[keyType]} ${amountParsed}`);
-                        console.log(Crates[keyType], amountParsed);
-                        this.setKeys(id, keyType, amountParsed);
+                    if (
+                        typeof keyType === "number" &&
+                        typeof amount === "string"
+                    ) {
+                        const amountParsed = Number(amount.trim());
+                        if (typeof amountParsed === "number") {
+                            this.log(id, `${Crates[keyType]} ${amountParsed}`);
+                            console.log(Crates[keyType], amountParsed);
+                            this.setKeys(id, keyType, amountParsed);
+                        }
+                    } else {
+                        console.log("unmatched", rawName);
                     }
-                } else {
-                    console.log("unmatched", rawName);
-                }
+                } catch {}
             }
 
             function findStaticEntities(this: BotManager) {
