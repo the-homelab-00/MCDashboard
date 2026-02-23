@@ -320,7 +320,7 @@ export class BotManager extends EventEmitter {
             });
 
             function filterKeyEntities(this: BotManager, entity) {
-                if (entity.name !== "armor_stand") return;
+                if (entity?.name !== "armor_stand") return;
                 const rawName = entity.getCustomName();
                 if (!rawName) return;
 
