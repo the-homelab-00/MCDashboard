@@ -222,6 +222,9 @@ export class BotManager extends EventEmitter {
         try {
             const bot = mineflayer.createBot({
                 host: process.env.SERVER_IP,
+                noPongTimeout: 300 * 1000,
+                closeTimeout: 300 * 1000,
+                checkTimeoutInterval: 300 * 1000,
                 viewDistance: "tiny",
                 colorsEnabled: false,
                 username: username,
@@ -437,12 +440,12 @@ export class BotManager extends EventEmitter {
                     delete (bot.world as any).columns[key];
                 }
 
-                setTimeout(() => {
-                    bot.chat("/warp crates");
-                }, 2000);
-                setTimeout(() => {
-                    findStaticEntities(this);
-                }, 4000);
+                // setTimeout(() => {
+                //     bot.chat("/warp crates");
+                // }, 2000);
+                // setTimeout(() => {
+                //     findStaticEntities(this);
+                // }, 4000);
                 setTimeout(() => {
                     bot.chat("/afk");
                 }, 6000);
@@ -464,6 +467,11 @@ export class BotManager extends EventEmitter {
                     }
                 }
                 this.log(id, `❌ Kicked: ${reasonMsg}`);
+            });
+
+            bot._client.on("error", (err: any) => {
+                if (err.code === "EPIPE" || err.code === "ECONNRESET") return; // Ignore silent drops
+                this.log(id, `Client Error: ${err.message}`);
             });
 
             bot.on("error", (err) => {
@@ -589,3 +597,18 @@ export class BotManager extends EventEmitter {
         this.db.close();
     }
 }
+
+process.on("uncaughtException", (err: any) => {
+    if (err.code === "EPIPE" || err.code === "ECONNRESET") {
+        console.warn("⚠️ Ignored fatal socket disconnect error:", err.message);
+        return;
+    }
+    console.error("Fatal Error:", err);
+});
+
+process.on("unhandledRejection", (err: any) => {
+    console.warn(
+        "⚠️ Ignored unhandled promise rejection:",
+        err?.message || err,
+    );
+});
