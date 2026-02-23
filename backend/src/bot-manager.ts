@@ -491,7 +491,7 @@ export class BotManager extends EventEmitter {
 
                 // FIX: Wipe the bot from memory and clear its listeners so it gets garbage collected
                 this.bots.delete(id);
-                bot.removeAllListeners();
+                //bot.removeAllListeners();
 
                 if (account) {
                     account.status = "offline";
@@ -612,3 +612,4 @@ process.on("unhandledRejection", (err: any) => {
         err?.message || err,
     );
 });
+
