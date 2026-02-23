@@ -144,14 +144,37 @@ export class BotManager extends EventEmitter {
                 keys: DefaultKeys,
             },
         });
+        this.triggerUpdate();
+    }
+    private updateTimeout: ReturnType<typeof setTimeout> | null = null;
+    private hasPendingUpdate = false;
+
+    private triggerUpdate() {
+        if (this.updateTimeout) {
+            this.hasPendingUpdate = true;
+            return;
+        }
+
+        // Emit immediately so the UI is fast
         this.emit("update", this.getAccounts());
+
+        // Lock for 50ms to absorb Minecraft server spam
+        this.updateTimeout = setTimeout(() => {
+            this.updateTimeout = null;
+
+            // If we absorbed spam during the 50ms lock, update the UI one last time
+            if (this.hasPendingUpdate) {
+                this.hasPendingUpdate = false;
+                this.emit("update", this.getAccounts());
+            }
+        }, 50);
     }
 
     async removeAccount(id: string) {
         await this.disconnectBot(id);
         this.db.query("DELETE FROM accounts WHERE id = ?").run(id);
         this.accounts.delete(id);
-        this.emit("update", this.getAccounts());
+        this.triggerUpdate();
     }
 
     getAccounts(): BotAccount[] {
@@ -165,20 +188,26 @@ export class BotManager extends EventEmitter {
                 `[${new Date().toLocaleTimeString()}] ${message}`,
             );
             if (account.logs.length > 100) account.logs.shift();
-            this.emit("update", this.getAccounts());
+            this.triggerUpdate();
         }
     }
 
     async connectBot(id: string) {
         const account = this.accounts.get(id);
-        if (!account || account.status === "online") return;
-
+        if (
+            !account ||
+            account.status === "online" ||
+            account.status === "connecting" ||
+            this.bots.has(id)
+        ) {
+            return;
+        }
         account.status = "connecting";
         account.desiredStatus = "online";
         this.db.query("UPDATE accounts SET should_be_online = 1 WHERE id = ?")
             .run(id);
 
-        this.emit("update", this.getAccounts());
+        this.triggerUpdate();
         this.log(
             id,
             `Connecting to ${process.env.SERVER_IP} (${account.type})...`,
@@ -193,6 +222,8 @@ export class BotManager extends EventEmitter {
         try {
             const bot = mineflayer.createBot({
                 host: process.env.SERVER_IP,
+                viewDistance: "tiny",
+                colorsEnabled: false,
                 username: username,
                 auth: "microsoft",
                 version: "1.20.2",
@@ -203,6 +234,30 @@ export class BotManager extends EventEmitter {
                     this.log(id, `Login Link: ${directLink}`);
                     console.log(`Login Link: ${directLink}`);
                 },
+            });
+            bot.physicsEnabled = false;
+
+            bot.on("forcedMove", () => {
+                // 1. Give the bot a tiny delay to settle into the new location
+                setTimeout(() => {
+                    const world = bot.world as any;
+
+                    // 2. Find the stored chunks (columns) in RAM
+                    // Mineflayer stores chunks in an object called 'columns' or 'async.columns'
+                    const columns = world.columns || world.async?.columns;
+
+                    if (columns) {
+                        const chunkKeys = Object.keys(columns);
+
+                        // 3. Delete every single chunk from memory
+                        for (const key of chunkKeys) {
+                            delete columns[key];
+                        }
+
+                        // Optional: Log it so you can see how much RAM you just saved
+                        // console.log(`🧹 [${username}] Wiped ${chunkKeys.length} chunks from RAM after teleport.`);
+                    }
+                }, 1000); // 1-second delay ensures the teleport fully finishes before wiping
             });
 
             bot.on("windowOpen", (window) => {
@@ -235,7 +290,7 @@ export class BotManager extends EventEmitter {
                 if (account) {
                     account.status = "online";
                     this.log(id, "Logged in successfully!");
-                    this.emit("update", this.getAccounts());
+                    this.triggerUpdate();
                 }
             });
 
@@ -315,7 +370,7 @@ export class BotManager extends EventEmitter {
                 const moneyChanged = updateNumericStat("money", "Money");
 
                 if (shardsChanged || moneyChanged) {
-                    this.emit("update", this.getAccounts());
+                    this.triggerUpdate();
                 }
             });
 
@@ -374,6 +429,14 @@ export class BotManager extends EventEmitter {
             bot.on("spawn", () => {
                 this.log(id, "Spawned in world.");
                 // setTimeout(() => { bot.chat('/afk') }, 2000)
+
+                const columnsToClear = Object.keys(
+                    (bot.world as any).columns || {},
+                );
+                for (const key of columnsToClear) {
+                    delete (bot.world as any).columns[key];
+                }
+
                 setTimeout(() => {
                     bot.chat("/warp crates");
                 }, 2000);
@@ -407,7 +470,7 @@ export class BotManager extends EventEmitter {
                 this.log(id, `Error: ${err.message}`);
                 const account = this.accounts.get(id);
                 if (account) account.status = "error";
-                this.emit("update", this.getAccounts());
+                this.triggerUpdate();
             });
 
             // --- UPDATED: End Event with Reason ---
@@ -417,9 +480,14 @@ export class BotManager extends EventEmitter {
                     `Bot disconnected. Reason: ${reason || "Socket closed"}`,
                 );
                 const account = this.accounts.get(id);
+
+                // FIX: Wipe the bot from memory and clear its listeners so it gets garbage collected
+                this.bots.delete(id);
+                bot.removeAllListeners();
+
                 if (account) {
                     account.status = "offline";
-                    this.emit("update", this.getAccounts());
+                    this.triggerUpdate();
 
                     // Reconnect if desired
                     if (account.desiredStatus === "online") {
@@ -446,14 +514,14 @@ export class BotManager extends EventEmitter {
         const account = this.accounts.get(id);
         if (!account) return;
         account.accountData.keys[crateType] = amount;
-        this.emit("update", this.getAccounts());
+        this.triggerUpdate();
     }
 
     private incrementKeys(id: string, crateType: Crates, amount: number) {
         const account = this.accounts.get(id);
         if (!account) return;
         account.accountData.keys[crateType] += amount;
-        this.emit("update", this.getAccounts());
+        this.triggerUpdate();
     }
 
     private updateStat(id: string, rawText: string) {
@@ -485,7 +553,7 @@ export class BotManager extends EventEmitter {
             const key = label as "money" | "shards";
             if (account.accountData[key] !== finalVal) {
                 account.accountData[key] = finalVal;
-                this.emit("update", this.getAccounts());
+                this.triggerUpdate();
             }
         }
     }
@@ -502,8 +570,10 @@ export class BotManager extends EventEmitter {
         }
 
         if (bot) {
-            // Log user-initiated disconnect
             this.log(id, "🔌 Disconnecting manually...");
+
+            // FIX: Remove listeners to prevent memory trapping
+            bot.removeAllListeners();
 
             if (account?.type === "java") {
                 bot.quit();
@@ -512,7 +582,7 @@ export class BotManager extends EventEmitter {
             }
             this.bots.delete(id);
         }
-        this.emit("update", this.getAccounts());
+        this.triggerUpdate();
     }
 
     close() {
