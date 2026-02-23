@@ -193,6 +193,17 @@ export class BotManager extends EventEmitter {
     }
 
     async connectBot(id: string) {
+       if (this.bots.has(id)) {
+        this.log(id, "⚠️ Found zombie bot instance. Cleaning up before connecting...");
+        try {
+            const oldBot = this.bots.get(id);
+            oldBot.removeAllListeners(); // Now it's safe to nuke listeners
+            oldBot.end(); // Force kill
+        } catch (e) {
+            console.error("Error killing zombie bot:", e);
+        }
+        this.bots.delete(id);
+        }
         const account = this.accounts.get(id);
         if (
             !account ||
@@ -612,5 +623,6 @@ process.on("unhandledRejection", (err: any) => {
         err?.message || err,
     );
 });
+
 
 
