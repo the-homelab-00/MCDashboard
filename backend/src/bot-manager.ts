@@ -581,14 +581,14 @@ export class BotManager extends EventEmitter {
             this.log(id, "🔌 Disconnecting manually...");
 
             // FIX: Remove listeners to prevent memory trapping
-            bot.removeAllListeners();
+            //bot.removeAllListeners();
 
             if (account?.type === "java") {
                 bot.quit();
             } else {
                 bot.close();
             }
-            this.bots.delete(id);
+            //this.bots.delete(id);
         }
         this.triggerUpdate();
     }
@@ -612,4 +612,5 @@ process.on("unhandledRejection", (err: any) => {
         err?.message || err,
     );
 });
+
 
