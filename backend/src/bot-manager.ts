@@ -24,6 +24,15 @@ export interface BotStats {
     keys: Record<Crates, number>;
 }
 
+const SILENT_PACKETS = [
+    'map_chunk',        // The biggest source of memory churn
+    'update_light',     // Heavy lighting data
+    'unload_chunk',     // Unnecessary if we aren't tracking blocks
+    'world_particles',  // Visual spam
+    'world_event',      // Sound/visual events
+];
+
+
 enum Crates {
     Prime,
     Amethyst,
@@ -66,6 +75,8 @@ export class BotManager extends EventEmitter {
     constructor(dbPath: string = path.join(DATA_ROOT, "accounts.db")) {
         super();
         this.db = new Database(dbPath, { create: true });
+        this.db.run("PRAGMA journal_mode = WAL;");
+
         this.initDb();
         this.loadAccounts();
 
@@ -76,6 +87,7 @@ export class BotManager extends EventEmitter {
             }
         }
     }
+
 
     private initDb() {
         this.db.query(`
@@ -209,7 +221,7 @@ export class BotManager extends EventEmitter {
             try {
                 oldBot.removeAllListeners();
                 oldBot.quit(); // Use quit() for Java
-            } catch (e) {}
+            } catch (e) { }
             this.bots.delete(id);
         }
 
@@ -223,6 +235,45 @@ export class BotManager extends EventEmitter {
         this.connectJava(id, account.username);
     }
 
+    private packetStats: Map<string, Map<string, number>> = new Map();
+
+    private startPacketProfiling(id: string, bot: any) {
+        if (!this.packetStats.has(id)) {
+            this.packetStats.set(id, new Map());
+        }
+
+        const stats = this.packetStats.get(id)!;
+
+        // Listen to every single raw packet
+        bot._client.on('packet', (data: any, metadata: any) => {
+            const name = metadata.name;
+            stats.set(name, (stats.get(name) || 0) + 1);
+        });
+
+        // Print a report every 10 seconds
+        const interval = setInterval(() => {
+            if (bot.status === 'offline') {
+                clearInterval(interval);
+                return;
+            }
+
+            console.log(`\n--- [${id}] Packet Profile (Last 10s) ---`);
+
+            // Sort packets by frequency (highest first)
+            const sorted = Array.from(stats.entries())
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10); // Top 10 spammiest packets
+
+            sorted.forEach(([name, count]) => {
+                console.log(`${name.padEnd(25)}: ${count} packets`);
+            });
+
+            // Reset stats for the next window
+            stats.clear();
+        }, 10000);
+    }
+
+
     private connectJava(id: string, username: string) {
         try {
             const bot = mineflayer.createBot({
@@ -234,17 +285,34 @@ export class BotManager extends EventEmitter {
                 colorsEnabled: false,
                 username: username,
                 auth: "microsoft",
+                physicsEnabled: false,
                 version: "1.20.2",
                 profilesFolder: path.join(DATA_ROOT, "sessions/java", username),
+                plugins: {
+                    // These 5 are the primary causes of GC churn and CPU usage
+                    physics: false,    // Stops the 20Hz math loop
+                    entities: true,   // Stops tracking/allocating Mobs/Players
+                    blocks: false,     // Stops parsing/storing Chunks
+                    particle: false    // Stops processing visual effects
+                },
                 onMsaCode: (data) => {
                     const directLink =
                         `https://www.microsoft.com/link?otc=${data.user_code}`;
                     this.log(id, `Login Link: ${directLink}`);
                     console.log(`Login Link: ${directLink}`);
                 },
+                hideErrors: true,
             });
+            bot.blockAt = () => null;
+            bot.findBlock = () => null;
+            bot.canSeeBlock = () => false;
+
             this.bots.set(id, bot);
-            bot.physicsEnabled = false;
+            this.startPacketProfiling(id, bot);
+
+
+
+
 
             const loginTimeout = setTimeout(() => {
                 const acc = this.accounts.get(id);
@@ -257,7 +325,91 @@ export class BotManager extends EventEmitter {
                 }
             }, 120000);
 
+
+
+
+
+            bot.once('inject_allowed', () => {
+                // These are the packets causing your "Full Garbage Collection"
+                const HEAVY_PACKETS = [
+                    'map_chunk',
+                    'update_light',
+                    'unload_chunk',
+                    'entity_metadata',
+                    'world_particles',
+                    'world_event',
+                    'action_bar',
+                    'rel_entity_move',
+                    'entity_move_look',
+                    'entity_look',
+                    'entity_head_rotation',
+                    'animation',
+                    'entity_teleport',
+                    'entity_head_look',
+                    'entity_velocity',
+                    'player_info',        // Tab list updates
+                    'bundle_delimiter',   // 1.20 grouping packet (useless for us)
+                    'block_break_animation',
+                    'entity_update_attributes',
+                    'custom_payload',
+                    'entity_sound_effect',
+                    'entity_status',
+                    'entity_equipment',
+                    'set_slot',
+                    'entity_equipment',
+                    'playerlist_header'
+                ];
+                const originalEmit = bot._client.emit;
+
+                bot._client.emit = function (name: string, ...args: any[]) {
+                    if (name == "raw") {
+                        return false
+                    }
+                    // 1. Clean the name: removes 'raw.' prefix if it exists
+                    const cleanName = name.startsWith('raw.') ? name.slice(4) : name;
+
+                    // 2. Block if the clean name is in our list
+                    if (HEAVY_PACKETS.includes(cleanName)) {
+                        return false;
+                    }
+
+
+                    // 3. Block the generic 'packet' event based on the metadata name
+                    if (name === 'packet' && args[1]) {
+                        const metaName = args[1].name;
+                        const cleanMetaName = metaName.startsWith('raw.') ? metaName.slice(4) : metaName;
+
+                        if (HEAVY_PACKETS.includes(cleanMetaName)) {
+                            return false;
+                        }
+                    }
+
+                    return originalEmit.apply(this, [name, ...args]);
+                };
+
+
+
+
+                HEAVY_PACKETS.forEach(packetName => {
+                    // This removes Mineflayer's internal listeners for these packets
+                    bot._client.removeAllListeners(packetName);
+                });
+
+                // Safety: some plugins might still try to access world data
+                // so we provide these "empty" mocks.
+                // @ts-ignore
+                bot.blockAt = () => null;
+            });
+
+
+
             bot.once("login", () => {
+                if (bot.world) {
+                    bot.world.getColumns = () => [];
+                    bot.world.getColumn = () => null;
+                    bot.world.setBlock = () => { };
+
+                }
                 clearTimeout(loginTimeout); // Cancel the safety timeout
                 const account = this.accounts.get(id);
                 if (account) {
@@ -265,29 +417,6 @@ export class BotManager extends EventEmitter {
                     this.log(id, "Logged in successfully!");
                     this.triggerUpdate();
                 }
-            });
-
-            bot.on("forcedMove", () => {
-                // 1. Give the bot a tiny delay to settle into the new location
-                setTimeout(() => {
-                    const world = bot.world as any;
-
-                    // 2. Find the stored chunks (columns) in RAM
-                    // Mineflayer stores chunks in an object called 'columns' or 'async.columns'
-                    const columns = world.columns || world.async?.columns;
-
-                    if (columns) {
-                        const chunkKeys = Object.keys(columns);
-
-                        // 3. Delete every single chunk from memory
-                        for (const key of chunkKeys) {
-                            delete columns[key];
-                        }
-
-                        // Optional: Log it so you can see how much RAM you just saved
-                        // console.log(`🧹 [${username}] Wiped ${chunkKeys.length} chunks from RAM after teleport.`);
-                    }
-                }, 1000); // 1-second delay ensures the teleport fully finishes before wiping
             });
 
             bot.on("windowOpen", (window) => {
@@ -325,7 +454,14 @@ export class BotManager extends EventEmitter {
             });
 
             bot._client.on("teams", (packet) => {
+                if (!packet.prefix) return;
+
                 const account = this.accounts.get(id);
+
+                const raw = packet.prefix.toLowerCase();
+                if (!raw.includes("money") && !raw.includes("shards")) return;
+
+
                 if (!account) return;
 
                 try {
@@ -443,7 +579,7 @@ export class BotManager extends EventEmitter {
                     } else {
                         console.log("unmatched", rawName);
                     }
-                } catch {}
+                } catch { }
             }
 
             function findStaticEntities(this: BotManager) {
@@ -452,20 +588,13 @@ export class BotManager extends EventEmitter {
                 });
             }
 
-            bot.on("entitySpawn", (entity) => {
-                filterKeyEntities(this, entity);
-            });
+            // bot.on("entitySpawn", (entity) => {
+            //     filterKeyEntities(this, entity);
+            // });
 
             bot.on("spawn", () => {
                 this.log(id, "Spawned in world.");
                 // setTimeout(() => { bot.chat('/afk') }, 2000)
-
-                const columnsToClear = Object.keys(
-                    (bot.world as any).columns || {},
-                );
-                for (const key of columnsToClear) {
-                    delete (bot.world as any).columns[key];
-                }
 
                 // setTimeout(() => {
                 //     bot.chat("/warp crates");
@@ -537,7 +666,7 @@ export class BotManager extends EventEmitter {
                             // Check again if desiredStatus is still online before reconnecting
                             if (
                                 this.accounts.get(id)?.desiredStatus ===
-                                    "online"
+                                "online"
                             ) {
                                 this.connectBot(id);
                             }
