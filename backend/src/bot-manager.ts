@@ -308,7 +308,7 @@ export class BotManager extends EventEmitter {
             bot.canSeeBlock = () => false;
 
             this.bots.set(id, bot);
-            this.startPacketProfiling(id, bot);
+            //this.startPacketProfiling(id, bot);
 
 
 
